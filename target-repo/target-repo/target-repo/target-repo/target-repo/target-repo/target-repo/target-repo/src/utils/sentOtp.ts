@@ -1,7 +1,7 @@
 // src/services/otp.service.ts
 
 import { sendEmail } from "../utils/emailService";
-import { logger } from "../utils/logger";
+
 
 // src/utils/otpGenerator.ts
 export function generateOTP(): string {
@@ -17,14 +17,7 @@ export async function sendOTPEmail(email: string) {
     html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
   };
 
-  try {
-    logger.info(`💌 Sending OTP email to: ${email}`);
-    await sendEmail([email], payload);
-    logger.info(`✅ OTP email sent successfully to: ${email}`);
-  } catch (err: any) {
-    logger.error(`❌ Failed to send OTP email to: ${email} - ${err.message || err}`);
-    throw err;
-  }
+  await sendEmail([email], payload);
 
   return otp;
 }
