@@ -1,7 +1,7 @@
 // src/resolvers/UserResolver.ts
 import { Resolver, Query, Mutation, Args } from "type-graphql";
 import { UserService } from "../service/user.service";
-import { SignupArgs,UserResponseDto, LoginArgs, LoginResponseDto, RefreshTokenResponse, RefreshTokenArgs, sendPasswordResetEmailResponse, SendPasswordResetEmailArgs, GoogleSignupArgs, CreateUserResponseDto } from "./dto/userResolverDto";
+import { SignupArgs,UserResponseDto, LoginArgs, LoginResponseDto, RefreshTokenResponse, RefreshTokenArgs, sendPasswordResetEmailResponse, SendPasswordResetEmailArgs, GoogleSignupArgs } from "./dto/userResolverDto";
 import { UserOTP } from "../model/userOtpSchema";
 import { VerifyOtpArgs, VerifyOtpResponse } from "./dto/otpResolverDto";
 import { getDBRepository } from "../db/repository";
@@ -13,42 +13,33 @@ import { logger } from "../utils/logger";
 export class UserResolver {
   private userService = new UserService();
   private userRepo = getDBRepository(User);
-  
   @Query(() => [UserResponseDto])
   async getUsers(): Promise<UserResponseDto[]> {
-    logger.info(`📊 Query: getUsers`);
-    try {
-      return await this.userService.getUsers();
-    } catch (error: any) {
-      logger.error(`❌ getUsers error: ${error.message}`, error);
-      throw error;
-    }
+    return await this.userService.getUsers();
   }
 
   @Mutation(() => LoginResponseDto)
   async login(@Args() { email, password }: LoginArgs): Promise<LoginResponseDto> {
-    logger.info(`🔐 Mutation: login for email: ${email}`);
     try {
       const result = await this.userService.login(email, password);
 
       return {
-        idToken: result.idToken,
+         idToken:result.idToken,
         refreshToken: result.refreshToken,
-        userId: result.uid,
+        uid: result.uid,
         email: result.email,
       };
     } catch (error: any) {
-      logger.error(`❌ Login mutation error for ${email}: ${error.message}`, error);
+      logger.info("Login error:", error);
       throw new Error(error?.message || "Login failed");
     }
   }
 
-@Mutation(() => CreateUserResponseDto)
-async createUser(@Args() User: SignupArgs): Promise<CreateUserResponseDto> {
-  logger.info(`📝 Mutation: createUser for email: ${User.email}`);
+@Mutation(() => UserResponseDto)
+async createUser(@Args() User: SignupArgs): Promise<any> {
   try {
-    await this.userService.createUser(User);
-    return {success:true, message:'User created successfully'};
+    const data = await this.userService.createUser(User);
+    return data;
   } catch (error: any) {
     logger.info("Error creating user:", error);
     throw new Error(error?.message || "Internal Server Error");
@@ -56,50 +47,37 @@ async createUser(@Args() User: SignupArgs): Promise<CreateUserResponseDto> {
   }
 
 @Mutation(() => VerifyOtpResponse)
-  async verifyOtpForSignup(
+async verifyOtpForSignup(
   @Args() { email, otp }: VerifyOtpArgs
 ): Promise<VerifyOtpResponse> {
-  logger.info(`🔍 Mutation: verifyOtpForSignup for email: ${email}`);
-  try {
-    // Find OTP record
-    const type = 'signup_email_verification'
-    logger.info(`📊 Looking up OTP record for: ${email}`);
-    const record = await UserOTP.findOne({ userId: email, otp, type });
-    if (!record) {
-      logger.warn(`⚠️ Invalid OTP for: ${email}`);
-      return { success: false, message: "Invalid OTP" };
-    }
-
-    // Check if expired
-    const now = Date.now();
-    if (record.expireAt < now) {
-      logger.warn(`⚠️ OTP expired for: ${email}`);
-      // Delete expired OTP
-      await UserOTP.deleteOne({ _id: record._id });
-      return { success: false, message: "OTP expired" };
-    }
-
-    // OTP is valid, delete record
-    logger.info(`✅ OTP valid, deleting record`);
-    await UserOTP.deleteOne({ _id: record._id });
-
-    // ✅ Update user in PostgreSQL
-    logger.info(`💾 Updating user verification status in PostgreSQL`);
-    const user = await this.userRepo.findOne({ where: { email: email } });
-    if (!user) {
-      logger.error(`❌ User not found: ${email}`);
-      return { success: false, message: "User not found" };
-    }
-
-    user.isVerified = true;
-    await this.userRepo.save(user);
-    logger.info(`✅ User email verified: ${email}`);
-
-    return { success: true, message: "OTP verified successfully" };
-  } catch (error: any) {
-    logger.error(`❌ verifyOtpForSignup error for ${email}: ${error.message}`, error);
-    throw error;
+  // Find OTP record
+  const type='signup_email_verification'
+  const record = await UserOTP.findOne({ userId:email, otp, type });
+  if (!record) {
+    return { success: false, message: "Invalid OTP" };
   }
+
+  // Check if expired
+  const now = Date.now();
+  if (record.expireAt < now) {
+    // Delete expired OTP
+    await UserOTP.deleteOne({ _id: record._id });
+    return { success: false, message: "OTP expired" };
+  }
+
+  // OTP is valid, delete record
+  await UserOTP.deleteOne({ _id: record._id });
+
+  // ✅ Update user in PostgreSQL
+  const user = await this.userRepo.findOne({ where: { email: email } });
+  if (!user) {
+    return { success: false, message: "User not found" };
+  }
+
+  user.isVerified = true;
+  await this.userRepo.save(user);
+
+  return { success: true, message: "OTP verified successfully" };
 }
 
 @Mutation(() => VerifyOtpResponse)
